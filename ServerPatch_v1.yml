@@ -1,0 +1,83 @@
+---
+#- name: This is to start the services
+#  import_playbook: Service_stop.yml
+-
+  become: true
+  hosts: all
+  name: "This file is to start with Patching"
+  serial: 1
+  tasks:
+    -
+        include_vars: variables.yml
+    -
+      name: Stopping the application processes
+      loop:
+        - "{{service1}}"
+      #  - "{{service2}}"
+      register: service_output
+      service:
+        name: "{{item}}"
+        state: stopped
+        #state: "{{service_state}}"
+    #-
+    #  debug: var=service_output
+
+    -
+      ignore_errors: true
+      name: "verify application processes are not running"
+      register: app_process_check
+      shell: "if ps -eaf | egrep {{service1}} |grep -v grep > /dev/null ;then echo 'process_running';else echo 'process_not_running';fi"
+      #loop:
+      #    - "{{service1}}"
+    -
+      fail: "msg=\"{{ inventory_hostname }} have running Application.Please stop the application first, then attempt patching.\""
+      name: "decision point to start patching"
+      when: "app_process_check.stdout == \"process_running\""
+
+    -
+      name: "upgrade all packages on the server"
+      register: yum_update
+      when: "app_process_check.stdout == \"process_not_running\""
+      yum: "name=\"kernel\" state=latest"
+    -
+      ignore_errors: true
+      name: "check if reboot required after kernel update - This is to verify if the kernel version is up to date"
+      register: reboot_required
+      shell: "KERNEL_NEW=$(rpm -q --last kernel |head -1 | awk '{print $1}' | sed 's/kernel-//'); KERNEL_NOW=$(uname -r); if [[ $KERNEL_NEW != $KERNEL_NOW ]]; then echo \"reboot_needed\"; else echo \"reboot_not_needed\"; fi"
+    -
+      name: Reboot host and wait for it to restart
+      reboot:
+        msg: "Reboot initiated by Ansible"
+        connect_timeout: 5
+        reboot_timeout: 600
+        post_reboot_delay: 30
+        test_command: whoami
+      register: reboot_started
+      when: "reboot_required.stdout == \"reboot_needed\""
+
+    -
+      name: starting the application processes
+      loop:
+        - "{{service1}}"
+      #  - "{{service2}}"
+      register: service_output
+      service:
+        name: "{{item}}"
+        state: started
+
+    #- name: Pause for 3 minute for server to come up
+    #  pause:
+    #    minutes: 3
+
+#- name: This is to start the services
+#  import_playbook: Service_start.yml
+
+#    -
+#      include: Service_start.yml
+
+  # --Commented for future use
+  #  -
+  #    local_action:
+  #      module: "wait_for host={{ inventory_hostname }} port=22 delay=15 timeout=300 state=started"
+  #    name: "check if system responding to ssh"
+  #    when: reboot_started
