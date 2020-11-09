@@ -1,1 +1,2 @@
-localhost
+target1 ansible_host=192.168.68.112 ansible_ssh_pass=osboxes.org ansible_user=root
+target2 ansible_host=192.168.68.110 ansible_ssh_pass=osboxes.org ansible_user=root
